@@ -1,0 +1,259 @@
+---
+title: "Deployment Guide: Netlify Build, Functions, and MongoDB"
+description: "How to deploy Wild Guess & Match on Netlify with serverless functions, MongoDB, and PWA precaching. Covers build settings, redirects, the required MONGODB_URI environment variable, and automatic database indexes."
+sidebarTitle: "Deployment"
+---
+
+Wild Guess & Match is designed to deploy as a static site on Netlify with three serverless functions for data persistence. The Vite PWA plugin precaches assets, `netlify.toml` wires up API redirects, and MongoDB stores player profiles and scores. This page walks through every setting needed for a production deployment.
+
+## Build settings
+
+The project builds with standard Vite commands. Netlify reads `netlify.toml` at the repo root:
+
+```toml
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+```
+
+- `command` runs `tsc -b && vite build`, which typechecks and emits the static bundle.
+- `publish` points to the Vite `dist` folder.
+- `functions` points to the `netlify/functions` directory where Netlify discovers `.ts` handlers.
+
+Make sure your Netlify site uses Node.js 22 (matching the CI workflow) so `npm ci` installs dependencies correctly.
+
+## Redirects
+
+Three redirect rules handle routing:
+
+```toml
+[[redirects]]
+  from = "/api/leaderboard/daily"
+  to = "/.netlify/functions/leaderboard"
+  status = 200
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+```
+
+What each rule does:
+
+1. `/api/leaderboard/daily` specifically maps to the `leaderboard` function (used for daily rank queries).
+2. `/api/*` catches all other API paths and forwards them to matching function files by name. For example, `/api/player` hits `netlify/functions/player.ts`.
+3. The catch-all `/*` serves `index.html` so React Router manages client-side routing without 404s.
+
+All redirect statuses are `200` so paths appear clean to the browser and the frontend.
+
+## Environment variables
+
+Create a `.env` file locally or set variables in the Netlify dashboard under **Site settings > Environment variables**.
+
+### Required
+
+| Variable | Purpose |
+| --- | --- |
+| `MONGODB_URI` | Connection string for MongoDB Atlas or a local instance |
+
+Example from `.env.example`:
+
+```bash
+# MongoDB Connection String (Atlas or Local)
+MONGODB_URI=mongodb://localhost:27017/wild-guess-match
+```
+
+In production, use a MongoDB Atlas connection string with credentials:
+
+```bash
+MONGODB_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/wild-guess-match?retryWrites=true&w=majority
+```
+
+If `MONGODB_URI` is missing, the database utility throws:
+
+```text
+Please define the MONGODB_URI environment variable inside your Netlify settings.
+```
+
+### Optional considerations
+
+- No additional secrets are required for the PWA manifest or client build.
+- If you add analytics or error reporting later, add those keys to the same environment table.
+
+## Database indexes
+
+Indexes are created automatically when the first Netlify function connects to MongoDB. The connection utility in `netlify/functions/utils/mongodb.ts` runs idempotent `createIndex` calls before caching the client:
+
+```typescript
+await db.collection('players').createIndex({ playerId: 1 }, { unique: true });
+await db.collection('scores').createIndex({ date: 1, score: -1 });
+await db.collection('scores').createIndex({ playerId: 1, date: 1 });
+await db.collection('posters').createIndex({ playerId: 1 });
+```
+
+What each index supports:
+
+| Collection | Index | Query pattern |
+| --- | --- | --- |
+| `players` | `{ playerId: 1 }` unique | Player lookup by ID |
+| `scores` | `{ date: 1, score: -1 }` | Daily leaderboard sorted by score |
+| `scores` | `{ playerId: 1, date: 1 }` | Personal best per day |
+| `posters` | `{ playerId: 1 }` | Drawing studio poster retrieval per player |
+
+If index creation fails, the app logs a warning but still connects so gameplay is not blocked.
+
+## PWA precaching
+
+`vite.config.ts` uses `vite-plugin-pwa` with an `autoUpdate` registration. At build time the plugin generates a precache manifest that includes:
+
+- `favicon.svg`
+- `icons.svg`
+- All files under `assets/**/*.svg` (animal and item artwork)
+
+This means first visits download the full game bundle and artwork, and subsequent loads work offline. The service worker auto-updates when a new deploy is published.
+
+## Deployment checklist
+
+Before deploying or merging a PR:
+
+- [ ] `MONGODB_URI` is set in Netlify dashboard
+- [ ] Node.js version is 22 in Netlify build settings
+- [ ] Build command is `npm run build`
+- [ ] Publish directory is `dist`
+- [ ] Functions directory is `netlify/functions`
+- [ ] CI passes on GitHub (`npm run test`, `npm run build`, `npm run test:e2e`)
+
+For local testing of the full stack before deploying, see [Testing & CI](/development/testing).
+
+Wild Guess & Match is designed to deploy as a static site on Netlify with three serverless functions for data persistence. The Vite PWA plugin precaches assets, `netlify.toml` wires up API redirects, and MongoDB stores player profiles and scores. This page walks through every setting needed for a production deployment.
+
+## Build settings
+
+The project builds with standard Vite commands. Netlify reads `netlify.toml` at the repo root:
+
+```toml
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+```
+
+- `command` runs `tsc -b && vite build`, which typechecks and emits the static bundle.
+- `publish` points to the Vite `dist` folder.
+- `functions` points to the `netlify/functions` directory where Netlify discovers `.ts` handlers.
+
+Make sure your Netlify site uses Node.js 22 (matching the CI workflow) so `npm ci` installs dependencies correctly.
+
+## Redirects
+
+Three redirect rules handle routing:
+
+```toml
+[[redirects]]
+  from = "/api/leaderboard/daily"
+  to = "/.netlify/functions/leaderboard"
+  status = 200
+
+[[redirects]]
+  from = "/api/*"
+  to = "/.netlify/functions/:splat"
+  status = 200
+
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+```
+
+What each rule does:
+
+1. `/api/leaderboard/daily` specifically maps to the `leaderboard` function (used for daily rank queries).
+2. `/api/*` catches all other API paths and forwards them to matching function files by name. For example, `/api/player` hits `netlify/functions/player.ts`.
+3. The catch-all `/*` serves `index.html` so React Router manages client-side routing without 404s.
+
+All redirect statuses are `200` so paths appear clean to the browser and the frontend.
+
+## Environment variables
+
+Create a `.env` file locally or set variables in the Netlify dashboard under **Site settings > Environment variables**.
+
+### Required
+
+| Variable | Purpose |
+| --- | --- |
+| `MONGODB_URI` | Connection string for MongoDB Atlas or a local instance |
+
+Example from `.env.example`:
+
+```bash
+# MongoDB Connection String (Atlas or Local)
+MONGODB_URI=mongodb://localhost:27017/wild-guess-match
+```
+
+In production, use a MongoDB Atlas connection string with credentials:
+
+```bash
+MONGODB_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/wild-guess-match?retryWrites=true&w=majority
+```
+
+If `MONGODB_URI` is missing, the database utility throws:
+
+```text
+Please define the MONGODB_URI environment variable inside your Netlify settings.
+```
+
+### Optional considerations
+
+- No additional secrets are required for the PWA manifest or client build.
+- If you add analytics or error reporting later, add those keys to the same environment table.
+
+## Database indexes
+
+Indexes are created automatically when the first Netlify function connects to MongoDB. The connection utility in `netlify/functions/utils/mongodb.ts` runs idempotent `createIndex` calls before caching the client:
+
+```typescript
+await db.collection('players').createIndex({ playerId: 1 }, { unique: true });
+await db.collection('scores').createIndex({ date: 1, score: -1 });
+await db.collection('scores').createIndex({ playerId: 1, date: 1 });
+await db.collection('posters').createIndex({ playerId: 1 });
+```
+
+What each index supports:
+
+| Collection | Index | Query pattern |
+| --- | --- | --- |
+| `players` | `{ playerId: 1 }` unique | Player lookup by ID |
+| `scores` | `{ date: 1, score: -1 }` | Daily leaderboard sorted by score |
+| `scores` | `{ playerId: 1, date: 1 }` | Personal best per day |
+| `posters` | `{ playerId: 1 }` | Drawing studio poster retrieval per player |
+
+If index creation fails, the app logs a warning but still connects so gameplay is not blocked.
+
+## PWA precaching
+
+`vite.config.ts` uses `vite-plugin-pwa` with an `autoUpdate` registration. At build time the plugin generates a precache manifest that includes:
+
+- `favicon.svg`
+- `icons.svg`
+- All files under `assets/**/*.svg` (animal and item artwork)
+
+This means first visits download the full game bundle and artwork, and subsequent loads work offline. The service worker auto-updates when a new deploy is published.
+
+## Deployment checklist
+
+Before deploying or merging a PR:
+
+- [ ] `MONGODB_URI` is set in Netlify dashboard
+- [ ] Node.js version is 22 in Netlify build settings
+- [ ] Build command is `npm run build`
+- [ ] Publish directory is `dist`
+- [ ] Functions directory is `netlify/functions`
+- [ ] CI passes on GitHub (`npm run test`, `npm run build`, `npm run test:e2e`)
+
+For local testing of the full stack before deploying, see [Testing & CI](/development/testing).

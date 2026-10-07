@@ -1,0 +1,120 @@
+---
+title: "Animal Data: Types, Categories, and Asset Pipeline"
+description: "Learn how animals are modeled and stored in the Wild Guess & Match game, including the Animal and MatchObjects interfaces, categories, and how to add new animals with SVG assets and match objects."
+sidebarTitle: "Animal Data"
+---
+
+Wild Guess & Match stores every animal as a typed object in `src/data/animals.ts`. The same array feeds the Guess Game and the Match Game, so all names, images, sounds, and categories live in one place. This page covers the TypeScript interfaces, the category list, and the steps to add a new animal with matching SVG assets.
+
+## Interfaces
+
+The `ANIMALS` array is typed as `Animal[]` with nested `MatchObjects`.
+
+```typescript
+export interface MatchObjects {
+  food: string;
+  foodName: string;
+  habitat: string;
+  habitatName: string;
+  object: string;
+  objectName: string;
+}
+
+export interface Animal {
+  id: string;
+  displayName: string;
+  imageUrl: string;
+  audioUrl: string;
+  category: string;
+  matchObjects: MatchObjects;
+}
+```
+
+Fields at a glance
+
+| Field | Meaning | Example |
+| --- | --- | --- |
+| `id` | URL-safe kebab-case identifier | `"lion"` |
+| `displayName` | Human readable label shown to kids | `"Lion"` |
+| `imageUrl` | SVG path for the animal portrait | `"/assets/animals/lion.svg"` |
+| `audioUrl` | Spoken name text for speech synthesis | `"Lion"` |
+| `category` | Themed group shown in category filters | `"Wild Animals"` |
+| `matchObjects` | Three distractors for the Match Game | See below |
+
+### MatchObjects
+
+Each animal carries one `food`, one `habitat`, and one `object` image plus a friendly display name.
+
+- `food` + `foodName` (for example, `"/assets/items/meat.svg"` and `"Meat"`)
+- `habitat` + `habitatName` (for example, `"/assets/items/savanna.svg"` and `"Savanna"`)
+- `object` + `objectName` (for example, `"/assets/items/crown.svg"` and `"Crown"`)
+
+The Match Game presents these alongside the animal and the child must pick the correct items.
+
+## Animal categories
+
+The `ANIMALS` array currently groups animals into 9 categories:
+
+- **Wild Animals** (lion, monkey, elephant, panda, tiger, zebra, giraffe, kangaroo, hippo, rhino, cheetah, flamingo, sloth)
+- **Farm Animals** (cow, rabbit, pig, sheep, chicken, horse)
+- **Forest Friends** (bear, fox, mouse, squirrel, deer, owl, wolf)
+- **Insects** (bee, butterfly, ladybug, ant, spider, caterpillar)
+- **Pond Life** (frog, duck, snail, beaver, otter)
+- **Pets** (cat, dog)
+- **Ocean Life** (dolphin, whale, shark, octopus, turtle, crab, lobster, starfish)
+- **Polar Regions** (penguin)
+- **Jungle Birds** (parrot, flamingo)
+
+The frontend uses `category` as a filter in the Guess Game and may extend it to a category chooser. Keep category values consistent if you add more animals.
+
+## How to add a new animal
+
+You need three SVG files and a new array entry.
+
+### Step 1: Prepare the SVGs
+
+1. Create the **animal portrait** at `public/assets/animals/<id>.svg`.
+2. Create three **match object** images in `public/assets/items/`:
+   - `<id>_food.svg`
+   - `<id>_habitat.svg`
+   - `<id>_object.svg`
+
+All assets are linked as absolute paths (`/assets/...`) and served from the `public` folder by Vite.
+
+### Step 2: Register the animal
+
+Append a new object to the `ANIMALS` array in `src/data/animals.ts`.
+
+```typescript
+{
+  "id": "platypus",
+  "displayName": "Platypus",
+  "imageUrl": "/assets/animals/platypus.svg",
+  "audioUrl": "Platypus",
+  "category": "Pond Life",
+  "matchObjects": {
+    "food": "/assets/items/shrimp.svg",
+    "foodName": "Tiny Shrimp",
+    "habitat": "/assets/items/riverbank.svg",
+    "habitatName": "Riverbank",
+    "object": "/assets/items/bill.svg",
+    "objectName": "Duck Bill"
+  }
+}
+```
+
+### Step 3: Validate assets
+
+Run the asset test to confirm the new entry has the required fields.
+
+```bash
+npm run test -- src/data/animals.test.ts
+```
+
+The test checks that every animal has a truthful `id`, `displayName`, SVG `imageUrl`, truthy `audioUrl`, truthy `category`, and six valid `matchObjects` SVG/name pairs. If the test passes, the animal is valid for both game modes.
+
+## Asset naming conventions
+
+- Keep filenames lowercase with hyphens. Example: `baby-pouch.svg` instead of `BabyPouch.svg`.
+- Use `.svg` for every image so the Vite PWA plugin includes them automatically in the precache manifest via the glob pattern `assets/**/*.svg`.
+- Store the item SVGs under `public/assets/items/` and animals under `public/assets/animals/`. The `public` directory is copied to `dist` at build time without hashing, so paths stay stable in production.

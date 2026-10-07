@@ -1,0 +1,72 @@
+---
+title: "Guess Game"
+description: "Learn how the Guess Game in Wild Guess & Match works: streak-based difficulty scaling, 10–20 coin rewards, confetti celebrations, and voice feedback."
+sidebarTitle: "Guess Game"
+---
+
+The Guess Game is an audio-visual animal identification game. A large animal image is shown alongside multiple choice name buttons. The child taps the correct name to earn coins.
+
+## Game Flow
+
+1. A shuffled pool of `ANIMALS` is created using the Fisher-Yates algorithm in `shuffle.ts`.
+2. A random animal is popped from the pool and displayed.
+3. `soundSystem.speak("Who is this?")` gives the instruction.
+4. The child selects one of the options.
+5. The result is revealed with color-coded feedback, sound effects, and confetti for correct answers.
+
+## Difficulty Scaling via Streak
+
+The game gets harder as the child builds a streak of correct answers. `GuessGame.tsx` tracks `streak` and applies two scaling rules:
+
+| Streak Threshold | Behavior |
+| --- | --- |
+| `streak >= 3` | Distractor animals are chosen from the **same category** as the correct animal to increase similarity. |
+| `streak >= 5` | The number of answer options increases from **3 to 4**. |
+
+If there are not enough same-category animals to fill the distractors, the code falls back to a random shuffle of all animals.
+
+```tsx
+if (currentStreak >= 3) {
+  const sameCategory = ANIMALS.filter(
+    (a) => a.id !== animal.id && a.category === animal.category
+  );
+  if (sameCategory.length >= 2) {
+    wrongChoices = shuffle(sameCategory);
+  } else {
+    wrongChoices = shuffle(ANIMALS.filter((a) => a.id !== animal.id));
+  }
+}
+
+const optionsCount = currentStreak >= 5 ? 4 : 3;
+```
+
+## Coin Rewards
+
+Correct answers award coins based on the current streak:
+
+| Streak | Coins Earned | Multiplier |
+| --- | --- | --- |
+| 0–2 | 10 | Base |
+| 3–4 | 12 | 1.2x |
+| 5–9 | 15 | 1.5x |
+| 10+ | 20 | 2x |
+
+```tsx
+let coinsEarned = 10;
+if (newStreak >= 10) coinsEarned = 20;
+else if (newStreak >= 5) coinsEarned = 15;
+else if (newStreak >= 3) coinsEarned = 12;
+```
+
+These coins are passed upward through the `onEarnCoins` callback to `App.tsx`, which syncs them to the server via the [POST /api/score](/api/score) endpoint.
+
+## Feedback and Reinforcement
+
+- **Correct**: `soundSystem.playCorrect()` plays, confetti explodes with `canvas-confetti`, and the animal name is spoken aloud: `"{AnimalName}! Yes!"`.
+- **Incorrect**: `soundSystem.playIncorrect()` plays, the streak resets to `0`, and the correct name is spoken: `"That is the {AnimalName}."`.
+
+The answer buttons change color after reveal: green for correct, red for the wrong selected option, and grayed out for the remaining choices.
+
+## Accessibility
+
+Each answer button includes an `aria-label` with the animal's display name. A "Speak" button in the header allows the child to hear the animal's name repeated at any time.

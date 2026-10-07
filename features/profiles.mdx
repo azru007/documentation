@@ -1,0 +1,67 @@
+---
+title: "Profiles & Parent Gate"
+description: "How Wild Guess & Match handles first-time profile setup with a parent gate math check, avatar selection, and anonymous player identity stored in localStorage and MongoDB."
+sidebarTitle: "Profiles & Parent Gate"
+---
+
+Wild Guess & Match requires every child to set up a profile before playing. The first-time flow is split into two stages: a parent gate math check, then nickname and avatar selection.
+
+## Parent Gate
+
+To prevent accidental profile changes or access to leaderboard data, a simple math gate blocks entry. The parent or caregiver must solve an addition question with two random numbers between 2 and 9.
+
+When the gate loads, `ProfileSetup.tsx` generates a new question with `Math.floor(Math.random() * 8) + 2` for both operands. The answer is parsed as an integer and compared to the expected sum. If the answer is wrong:
+
+- The card shakes with a framer-motion `x: [-10, 10, -10, 10, 0]` animation.
+- A new question is generated immediately.
+- `soundSystem.playIncorrect()` fires.
+
+If the answer is correct:
+
+- `soundSystem.playCorrect()` and `soundSystem.speak("Awesome! Let's choose your nickname.")` run.
+- The UI transitions to the profile form.
+
+## Nickname and Avatar
+
+The child can enter a nickname of up to 15 characters. The component validates:
+
+- The nickname is non-empty after trimming.
+- It does not exceed 15 characters.
+
+```tsx
+if (nickname.length > 15) {
+  setProfileError('Nickname must be 15 characters or less!');
+  return;
+}
+```
+
+Six avatars are available, drawn from the first six animals in the `ANIMALS` registry: Lion, Cow, Monkey, Elephant, Rabbit, and Frog.
+
+The selected avatar is stored as an `avatarId` string. It defaults to `lion` if none is chosen.
+
+## Player Identity
+
+On completion, the app generates a client-side anonymous ID:
+
+```tsx
+const generatedPlayerId = 'usr_' + Math.random().toString(36).substring(2, 11);
+```
+
+This ID is stored in `localStorage` under the key `playerId`, alongside `nickname` and `avatarId`. On subsequent loads, `App.tsx` reads these values and fetches the latest profile state from MongoDB via `/api/player?playerId={localId}`.
+
+If a profile is not found on the server, the app falls back to the stored local values and creates a new record on the next interaction.
+
+## Server Profile Sync
+
+The profile is synced to the `players` collection in MongoDB. The document stores:
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `playerId` | string | Anonymous ID with `usr_` prefix |
+| `nickname` | string | User-chosen display name |
+| `avatarId` | string | Selected animal identifier |
+| `coins` | number | Current coin balance |
+| `studioUnlocked` | boolean | Whether the Drawing Studio is purchased |
+| `updatedAt` | Date | Last server write timestamp |
+
+The `POST /api/player` endpoint accepts these fields and performs an upsert. The `coins` field is clamped to a minimum of `0` server-side to prevent negative balances.

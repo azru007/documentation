@@ -1,0 +1,109 @@
+---
+title: "Wild Guess & Match API Overview"
+sidebarTitle: "Overview"
+description: "Base URL, CORS, JSON format, error handling, and MongoDB collections for the Wild Guess & Match PWA backend API."
+---
+
+Wild Guess & Match exposes a small REST API over Netlify Functions. All endpoints return JSON, support CORS, and share a common error format. No authentication token is required; endpoints identify players by a `playerId` string.
+
+## Base URL
+
+Production
+
+```text
+https://<your-netlify-site>/.netlify/functions/<function-name>
+```
+
+Friendly path (via `netlify.toml` redirect)
+
+```text
+https://<your-netlify-site>/api/<function-name>
+```
+
+Example
+
+```text
+https://wild-guess-match.netlify.app/api/player?playerId=abc123
+```
+
+## CORS
+
+Every response includes the following headers so the PWA can call the API directly from the browser.
+
+```http
+Access-Control-Allow-Origin: *
+Access-Control-Allow-Headers: Content-Type
+Access-Control-Allow-Methods: GET, POST, OPTIONS
+```
+
+Preflight `OPTIONS` requests return `200 OK` with an empty body.
+
+## Request format
+
+POST bodies must be valid JSON with the header `Content-Type: application/json`.
+
+```bash
+curl -X POST https://wild-guess-match.netlify.app/api/score \
+  -H "Content-Type: application/json" \
+  -d '{"playerId":"abc123","mode":"guess","score":5,"coinsEarned":10}'
+```
+
+### Supported HTTP methods per endpoint
+
+| Endpoint | Methods |
+| --- | --- |
+| `/api/player` | `GET`, `POST` |
+| `/api/score` | `POST` |
+| `/api/leaderboard` | `GET` |
+| `/api/leaderboard/daily` | `GET` |
+
+## Response format
+
+Success responses use `200 OK` and a wrapper object.
+
+```json
+{
+  "success": true,
+  "...": "..."
+}
+```
+
+Error responses use the appropriate status code and a consistent wrapper.
+
+```json
+{
+  "error": "A human readable message"
+}
+```
+
+## Error status codes
+
+| Status | Meaning | Common cause |
+| --- | --- | --- |
+| `400` | Bad Request | Missing body, missing required fields, or invalid parameters |
+| `404` | Not Found | Player profile does not exist |
+| `405` | Method Not Allowed | HTTP method is not supported for the endpoint |
+| `500` | Internal Server Error | Database failure or unexpected exception |
+
+## MongoDB collections
+
+The backend stores data in MongoDB. The connection string comes from the `MONGODB_URI` environment variable.
+
+| Collection | Purpose |
+| --- | --- |
+| `players` | Player profiles and coin balances |
+| `scores` | Score submissions per game mode and UTC date |
+| `posters` | Drawing studio posters (created by players) |
+
+### Indexes
+
+The `connectToDatabase` utility idempotently creates the following indexes on cold start for performance and uniqueness.
+
+| Collection | Index | Type |
+| --- | --- | --- |
+| `players` | `playerId: 1` | Unique |
+| `scores` | `date: 1, score: -1` | Standard |
+| `scores` | `playerId: 1, date: 1` | Standard |
+| `posters` | `playerId: 1` | Standard |
+
+No authentication is needed to read or write through the API. The backend clamps values server-side to prevent invalid data.

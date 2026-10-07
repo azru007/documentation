@@ -1,0 +1,123 @@
+---
+title: "Player Profile API"
+sidebarTitle: "Player"
+description: "GET or upsert player profiles with the /api/player endpoint. Returns playerId, nickname, avatarId, coins, and studioUnlocked."
+---
+
+The `/api/player` endpoint lets you fetch an existing player profile or create and update one. It is the source of truth for a player's display name, avatar, coin balance, and studio access.
+
+## Get a player profile
+
+Retrieve a single player by `playerId`.
+
+```bash
+curl "https://wild-guess-match.netlify.app/api/player?playerId=abc123"
+```
+
+### Query parameters
+
+<ParamField query="playerId" type="string" required>
+  The unique identifier for the player.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  Always `true` for a successful lookup.
+</ResponseField>
+
+<ResponseField name="player" type="object">
+  The full player document.
+</ResponseField>
+
+```json
+{
+  "success": true,
+  "player": {
+    "playerId": "abc123",
+    "nickname": "Zara",
+    "avatarId": "lion",
+    "coins": 120,
+    "studioUnlocked": true,
+    "createdAt": "2025-01-10T08:30:00.000Z",
+    "updatedAt": "2025-01-15T14:22:00.000Z"
+  }
+}
+```
+
+## Create or update a profile
+
+Send a `POST` request to create a new profile or update an existing one. The endpoint uses `findOneAndUpdate` with `upsert: true`.
+
+```bash
+curl -X POST https://wild-guess-match.netlify.app/api/player \
+  -H "Content-Type: application/json" \
+  -d '{
+    "playerId": "abc123",
+    "nickname": "Zara",
+    "avatarId": "lion",
+    "coins": 50,
+    "studioUnlocked": true
+  }'
+```
+
+### Request body
+
+<ParamField body="playerId" type="string" required>
+  Unique identifier for the player. Used as the lookup key.
+</ParamField>
+
+<ParamField body="nickname" type="string" required>
+  Display name shown in the leaderboard and UI.
+</ParamField>
+
+<ParamField body="avatarId" type="string" required>
+  Selected avatar identifier (for example, `lion`, `elephant`).
+</ParamField>
+
+<ParamField body="coins" type="number">
+  Current coin balance. Clamped to a minimum of `0` on update. Only updated when explicitly provided.
+</ParamField>
+
+<ParamField body="studioUnlocked" type="boolean">
+  Whether the Drawing Studio feature is unlocked for this player. Defaults to `false` on insert.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  `true` when the upsert succeeds.
+</ResponseField>
+
+<ResponseField name="player" type="object">
+  The updated or newly created player document.
+</ResponseField>
+
+```json
+{
+  "success": true,
+  "player": {
+    "playerId": "abc123",
+    "nickname": "Zara",
+    "avatarId": "lion",
+    "coins": 50,
+    "studioUnlocked": true,
+    "createdAt": "2025-01-10T08:30:00.000Z",
+    "updatedAt": "2025-01-15T14:22:00.000Z"
+  }
+}
+```
+
+### Insert behavior
+
+When a player does not yet exist, the endpoint sets `coins` to the provided value or `0`, and `studioUnlocked` to the provided value or `false`. It also records `createdAt`. On every update it writes `updatedAt`.
+
+## Status codes
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Profile found or upserted successfully |
+| `400` | Missing `playerId` parameter, missing body, or missing required fields (`playerId`, `nickname`, `avatarId`) |
+| `404` | Player not found (GET only) |
+| `405` | Method not supported (for example, `DELETE`) |
+| `500` | Internal server or database error |

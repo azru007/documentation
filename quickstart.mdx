@@ -1,47 +1,129 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with Wild Guess & Match"
+sidebarTitle: "Quickstart"
+description: "Clone the Wild Guess & Match repo, install dependencies, configure your MongoDB connection, and run the full stack locally with Netlify CLI or Vite."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
-
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
+This guide covers everything you need to run Wild Guess & Match on your machine. You will clone the repository, install dependencies, configure the database connection, and start the development server.
 
 ## Prerequisites
 
-Before you begin, you must have:
+- Node.js 22 (the CI workflow targets `node-version: '22'`)
+- npm 10 or later
+- A MongoDB instance (local or Atlas)
+- Netlify CLI installed globally (only needed if you want to run Netlify Functions locally)
 
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
+<Note>
+  `netlify-cli` is not included in the project dependencies. Install it globally with `npm install -g netlify-cli` to use `netlify dev`.
+</Note>
 
-## Get started
+## Clone and Install
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
-
+  <Step title="Clone the repository">
     ```bash
-    npm install your-package
+    git clone https://github.com/azru007/learn-kids.git
+    cd learn-kids
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
-
+  <Step title="Install dependencies">
     ```bash
-    your-cli init
-    ```
-  </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
-
-    ```bash
-    your-cli start
+    npm install
     ```
   </Step>
 </Steps>
 
-<Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+## Configure Environment Variables
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
-</Tip>
+The backend functions require a MongoDB connection string. Copy the example file and edit it with your actual URI.
+
+```bash
+cp .env.example .env
+```
+
+Update `.env` with your MongoDB URI:
+
+```bash
+# MongoDB Connection String (Atlas or Local)
+MONGODB_URI=mongodb://localhost:27017/wild-guess-match
+```
+
+For MongoDB Atlas, use a connection string like:
+
+```bash
+MONGODB_URI=mongodb+srv://<user>:<password>@cluster.mongodb.net/wild-guess-match?retryWrites=true&w=majority
+```
+
+## Run the Development Server
+
+You have two options for local development:
+
+### Option 1: Frontend Only (Vite)
+
+Use this when you are only working on UI components and do not need the backend functions.
+
+```bash
+npm run dev
+```
+
+The Vite dev server starts on `http://localhost:5173` by default. API calls to `/api/*` will fail in this mode because there is no function router.
+
+### Option 2: Full Stack with Netlify Functions
+
+Use this when you are working on backend logic, database queries, or the full gameplay loop.
+
+```bash
+netlify dev
+```
+
+<Note>
+  This requires `netlify-cli` to be installed globally (`npm install -g netlify-cli`).
+</Note>
+
+This command reads `netlify.toml`, builds the project, and spins up a local Netlify Functions server. The redirects defined in the config let you call `/api/player`, `/api/score`, and `/api/leaderboard/daily` as you would in production.
+
+## Build for Production
+
+To verify that the production build succeeds before deploying:
+
+```bash
+npm run build
+```
+
+This runs `tsc -b && vite build`, outputting a static site to the `dist/` folder. The `netlify.toml` configuration points Netlify to this directory:
+
+```toml
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+```
+
+## Preview the Production Build
+
+```bash
+npm run preview
+```
+
+This serves the built `dist/` folder locally with Vite's preview server.
+
+## Run Tests
+
+<Steps>
+  <Step title="Unit tests (Vitest)">
+    ```bash
+    npm run test
+    ```
+  </Step>
+  <Step title="End-to-end tests (Playwright)">
+    ```bash
+    npx playwright install chromium --with-deps
+    npm run test:e2e
+    ```
+  </Step>
+</Steps>
+
+## Next Steps
+
+- [Architecture](/architecture): Learn how the frontend state, local storage, and Netlify Functions work together.
+- [API Reference](/api/overview): Explore the backend endpoints used by the game.

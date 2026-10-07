@@ -1,0 +1,187 @@
+---
+title: "Score Submission API"
+sidebarTitle: "Score"
+description: "POST game scores to /api/score. Server-side coin clamping prevents cheating and returns the new coin balance."
+---
+
+After a game session ends, POST the results to `/api/score`. The endpoint validates the player, clamps the earned coins server-side, updates the player's balance, and stores a score record tied to the current UTC day.
+
+## Submit a score
+
+```bash
+curl -X POST https://wild-guess-match.netlify.app/api/score \
+  -H "Content-Type: application/json" \
+  -d '{
+    "playerId": "abc123",
+    "mode": "guess",
+    "score": 8,
+    "coinsEarned": 15
+  }'
+```
+
+### Request body
+
+<ParamField body="playerId" type="string" required>
+  The player's unique identifier.
+</ParamField>
+
+<ParamField body="mode" type="string" required>
+  Game mode identifier. Supported values: `guess` or `match`.
+</ParamField>
+
+<ParamField body="score" type="number" required>
+  Raw game score (for example, correct answers or matched pairs).
+</ParamField>
+
+<ParamField body="coinsEarned" type="number" required>
+  Coins the client believes were earned. The server clamps this value.
+</ParamField>
+
+### Server-side coin clamping
+
+The endpoint ignores the client's `coinsEarned` value and applies its own cap to prevent cheating.
+
+| Mode | Minimum | Maximum |
+| --- | --- | --- |
+| `guess` | `0` | `20` |
+| `match` | `0` | `40` |
+| Unknown | `0` | `0` |
+
+_Guess mode base is 10 coins, with a high streak cap of 20. Match mode uses up to 8 expert pairs multiplied by 5 coins per pair for a max of 40._
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  `true` when the score is stored and the balance updated.
+</ResponseField>
+
+<ResponseField name="coinsEarned" type="number">
+  The clamped coin value that was actually applied.
+</ResponseField>
+
+<ResponseField name="newCoinBalance" type="number">
+  The player's updated total coin balance.
+</ResponseField>
+
+```json
+{
+  "success": true,
+  "coinsEarned": 15,
+  "newCoinBalance": 135
+}
+```
+
+## How scores are stored
+
+Each successful submission creates a document in the `scores` collection with the following fields.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `playerId` | string | Player identifier |
+| `nickname` | string | Copied from the player's profile at submission time |
+| `mode` | string | `guess` or `match` |
+| `score` | number | Raw game score |
+| `coinsEarned` | number | Clamped coin value |
+| `date` | string | UTC date string in `YYYY-MM-DD` format |
+| `createdAt` | Date | Server-side timestamp |
+
+## Status codes
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Score accepted, balance updated, and record stored |
+| `400` | Missing body or required fields (`playerId`, `mode`, `score`, `coinsEarned`) |
+| `404` | Player profile does not exist |
+| `405` | Method not allowed (only `POST` is accepted) |
+| `500` | Database or internal error |
+
+After a game session ends, POST the results to `/api/score`. The endpoint validates the player, clamps the earned coins server-side, updates the player's balance, and stores a score record tied to the current UTC day.
+
+## Submit a score
+
+```bash
+curl -X POST https://wild-guess-match.netlify.app/api/score \
+  -H "Content-Type: application/json" \
+  -d '{
+    "playerId": "abc123",
+    "mode": "guess",
+    "score": 8,
+    "coinsEarned": 15
+  }'
+```
+
+### Request body
+
+<ParamField body="playerId" type="string" required>
+  The player's unique identifier.
+</ParamField>
+
+<ParamField body="mode" type="string" required>
+  Game mode identifier. Supported values: `guess` or `match`.
+</ParamField>
+
+<ParamField body="score" type="number" required>
+  Raw game score (for example, correct answers or matched pairs).
+</ParamField>
+
+<ParamField body="coinsEarned" type="number" required>
+  Coins the client believes were earned. The server clamps this value.
+</ParamField>
+
+### Server-side coin clamping
+
+The endpoint ignores the client's `coinsEarned` value and applies its own cap to prevent cheating.
+
+| Mode | Minimum | Maximum |
+| --- | --- | --- |
+| `guess` | `0` | `20` |
+| `match` | `0` | `40` |
+| Unknown | `0` | `0` |
+
+_Guess mode base is 10 coins, with a high streak cap of 20. Match mode uses up to 8 expert pairs multiplied by 5 coins per pair for a max of 40._
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  `true` when the score is stored and the balance updated.
+</ResponseField>
+
+<ResponseField name="coinsEarned" type="number">
+  The clamped coin value that was actually applied.
+</ResponseField>
+
+<ResponseField name="newCoinBalance" type="number">
+  The player's updated total coin balance.
+</ResponseField>
+
+```json
+{
+  "success": true,
+  "coinsEarned": 15,
+  "newCoinBalance": 135
+}
+```
+
+## How scores are stored
+
+Each successful submission creates a document in the `scores` collection with the following fields.
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `playerId` | string | Player identifier |
+| `nickname` | string | Copied from the player's profile at submission time |
+| `mode` | string | `guess` or `match` |
+| `score` | number | Raw game score |
+| `coinsEarned` | number | Clamped coin value |
+| `date` | string | UTC date string in `YYYY-MM-DD` format |
+| `createdAt` | Date | Server-side timestamp |
+
+## Status codes
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Score accepted, balance updated, and record stored |
+| `400` | Missing body or required fields (`playerId`, `mode`, `score`, `coinsEarned`) |
+| `404` | Player profile does not exist |
+| `405` | Method not allowed (only `POST` is accepted) |
+| `500` | Database or internal error |

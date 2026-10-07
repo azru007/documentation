@@ -1,0 +1,108 @@
+---
+title: "Leaderboard API"
+sidebarTitle: "Leaderboard"
+description: "GET daily leaderboards from /api/leaderboard or /api/leaderboard/daily. Aggregates scores by UTC day and returns the top 10 plus the caller's rank."
+---
+
+The leaderboard endpoint aggregates all score submissions for the current UTC day, ranks players by total score, and returns the top 10 entries. You can also request your own rank by including your `playerId`.
+
+## Get the daily leaderboard
+
+```bash
+curl "https://wild-guess-match.netlify.app/api/leaderboard"
+```
+
+With a player rank lookup:
+
+```bash
+curl "https://wild-guess-match.netlify.app/api/leaderboard?playerId=abc123"
+```
+
+Alternatively, use the friendly alias:
+
+```bash
+curl "https://wild-guess-match.netlify.app/api/leaderboard/daily?playerId=abc123"
+```
+
+### Query parameters
+
+<ParamField query="playerId" type="string">
+  Optional. When provided, the response includes `playerRank` with the caller's position and score.
+</ParamField>
+
+### Response
+
+<ResponseField name="success" type="boolean">
+  `true` when aggregation succeeds.
+</ResponseField>
+
+<ResponseField name="date" type="string">
+  The UTC date string used for aggregation, in `YYYY-MM-DD` format.
+</ResponseField>
+
+<ResponseField name="leaderboard" type="array">
+  Top 10 players for the day, sorted by total score descending.
+</ResponseField>
+
+<ResponseField name="playerRank" type="object | null">
+  The caller's rank if `playerId` was provided and the player has scores today. Otherwise `null`.
+</ResponseField>
+
+```json
+{
+  "success": true,
+  "date": "2025-01-15",
+  "leaderboard": [
+    {
+      "playerId": "def456",
+      "nickname": "Leo",
+      "score": 42,
+      "coinsEarned": 35,
+      "rank": 1
+    },
+    {
+      "playerId": "abc123",
+      "nickname": "Zara",
+      "score": 28,
+      "coinsEarned": 20,
+      "rank": 2
+    }
+  ],
+  "playerRank": {
+    "playerId": "abc123",
+    "nickname": "Zara",
+    "score": 28,
+    "coinsEarned": 20,
+    "rank": 2
+  }
+}
+```
+
+### Leaderboard entry fields
+
+| Field | Type | Description |
+| --- | --- | --- |
+| `playerId` | string | Player identifier |
+| `nickname` | string | Display name from the player's profile |
+| `score` | number | Sum of all `score` values submitted today |
+| `coinsEarned` | number | Sum of all clamped `coinsEarned` values submitted today |
+| `rank` | number | 1-indexed position on the leaderboard |
+
+## Aggregation behavior
+
+The endpoint runs a MongoDB aggregation pipeline on the `scores` collection that:
+
+1. Filters to documents where `date` equals the current UTC day (`YYYY-MM-DD`).
+2. Groups by `playerId`, summing `score` and `coinsEarned`, and keeping the first `nickname`.
+3. Sorts by total `score` descending.
+4. Maps the results to 1-indexed ranks.
+
+Only the top 10 results are returned in the `leaderboard` array. If you provide `playerId`, the full ranked list is searched to return your `playerRank` even if you are outside the top 10.
+
+## Status codes
+
+| Status | Meaning |
+| --- | --- |
+| `200` | Leaderboard aggregated and returned |
+| `405` | Method not allowed (only `GET` is accepted) |
+| `500` | Database or aggregation error |

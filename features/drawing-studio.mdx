@@ -1,0 +1,79 @@
+---
+title: "Drawing Studio"
+description: "How the Drawing Studio in Wild Guess & Match works: a 50-coin unlock gate, freeform canvas with brush, eraser, and animal stamps, undo, clear, and a polaroid gallery saved to localStorage."
+sidebarTitle: "Drawing Studio"
+---
+
+The Drawing Studio is a creative canvas where children draw and stamp animal pictures. It is locked behind a 50-coin purchase gate and persists artwork to `localStorage`.
+
+## Unlock Gate
+
+When the child first opens the Studio tab, they see a lock screen with a progress bar showing how many coins they have collected toward the 50-coin unlock cost.
+
+```tsx
+const UNLOCK_COST = 50;
+const progressPercent = Math.min(100, Math.floor((coins / UNLOCK_COST) * 100));
+```
+
+The "Unlock" button is disabled until the child has at least 50 coins. On unlock:
+
+- `soundSystem.playVictory()` plays.
+- 50 coins are deducted from the local balance.
+- The `studioUnlocked` flag is set to `true`.
+- The state is synced to MongoDB via `/api/player` with the new coin balance.
+
+The unlocked state persists in the player's server profile and is restored on the next app load.
+
+## Drawing Tools
+
+The unlocked studio provides three tools selectable from the Toolbox panel: Brush, Eraser, and Stamp.
+
+### Brush and Eraser
+
+Both tools use the HTML5 Canvas `2d` context. When the child clicks or touches the canvas, mouse and touch events are translated into canvas coordinates. The eraser is implemented by setting `strokeStyle` to `#FFFFFF` (the background color) while keeping the same line behavior.
+
+```tsx
+context.strokeStyle = tool === 'eraser' ? '#FFFFFF' : color;
+context.lineWidth = brushSize;
+```
+
+### Stamp
+
+When the Stamp tool is active, clicking the canvas places the selected animal SVG at that location. The stamp size is proportional to the brush size slider value.
+
+```tsx
+const stampSize = brushSize * 4;
+context.drawImage(img, x - stampSize / 2, y - stampSize / 2, stampSize, stampSize);
+```
+
+All 49 animals in `ANIMALS` are listed in a scrollable stamp grid for selection.
+
+## Colors and Size
+
+Six colors are available: dark, coral, sky blue, kiwi green, yellow, and purple. A range slider from 2px to 40px controls the brush and stamp size.
+
+## Undo and Clear
+
+The studio maintains a canvas history stack. After every stroke or stamp, the current canvas state is saved as a base64 data URL.
+
+```tsx
+const dataUrl = canvas.toDataURL();
+const newHistory = history.slice(0, historyIdx + 1);
+newHistory.push(dataUrl);
+```
+
+**Undo** restores the previous state in the history by loading that data URL back onto the canvas. The "Clear" button resets the canvas to a blank white page and saves that state.
+
+## Save Poster and Gallery
+
+When the child clicks "Save Poster", the canvas is exported with `canvas.toDataURL()`. The resulting base64 string is appended to the `savedPosters` array and persisted to `localStorage` under the key `savedPosters`.
+
+```tsx
+const updated = [...savedPosters, dataUrl];
+setSavedPosters(updated);
+localStorage.setItem('savedPosters', JSON.stringify(updated));
+```
+
+Saved posters appear in the "My Gallery" section as polaroid-style cards with a preview image, painting number label, and a Delete button. Deleting a poster updates the array and `localStorage` immediately.
+
+The gallery is scrollable horizontally and styled with a lightweight scrollbar.

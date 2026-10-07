@@ -1,0 +1,110 @@
+---
+title: "Sound System: Mute, SFX, TTS, and Background Music"
+description: "Reference for the SoundSystem class that powers all audio in Wild Guess & Match, including toggle persistence, synthesized sound effects, speech synthesis, and kid-friendly playback settings."
+sidebarTitle: "Sound System"
+---
+
+Wild Guess & Match ships a single, self-contained audio system in `src/utils/sound.ts`. It synthesizes every sound effect with the Web Audio API instead of loading external files, uses `speechSynthesis` for voice feedback, and runs a looping soft pentatonic melody in the background. This page documents the full `SoundSystem` API and how mute states are persisted.
+
+## Design overview
+
+There is one exported singleton called `soundSystem`. Because the class uses only Web Audio and Web Speech APIs, it works without browser extension pop-up blockers and avoids loading large audio assets over the network.
+
+## Mute state and persistence
+
+The class stores two booleans in `localStorage`:
+
+| Key | Default | Description |
+| --- | --- | --- |
+| `sfxMuted` | `false` | Mutes all short sound effects and TTS |
+| `musicMuted` | `false` | Mutes the synthesized background music loop |
+
+Values are read when the singleton is created and updated through setters.
+
+### Getters and setters
+
+```typescript
+soundSystem.setSfxMuted(muted: boolean): void
+soundSystem.setMusicMuted(muted: boolean): void
+soundSystem.getSfxMuted(): boolean
+soundSystem.getMusicMuted(): boolean
+```
+
+When `setMusicMuted(true)` is called, the running arpeggio loop stops immediately. When set to `false`, the loop restarts on the next call if the audio context is in a running state.
+
+## Sound effect methods
+
+Each method is a no-op if `sfxMuted` is `true`.
+
+| Method | Trigger | Sound character |
+| --- | --- | --- |
+| `playTap()` | Button click | Quick sine sweep 400Hz to 150Hz |
+| `playCorrect()` | Right guess in Guess Game | Ascending C-major chord (cheerful) |
+| `playIncorrect()` | Wrong guess | Sawtooth descending slide (gentle but clear) |
+| `playMatch()` | Correct match in Match Game | A5 to D6 sine chime |
+| `playFlip()` | Card flip in Match Game | Triangle wave slide 260Hz to 380Hz |
+| `playCoin()` | Coin earned | Dual sine/triangle B5 to E6 sparkle |
+| `playVictory()` | Level complete | Short pentatonic ascending run |
+
+Example usage in a React component:
+
+```tsx
+import soundSystem from '@/utils/sound';
+
+function handleCorrectGuess() {
+  soundSystem.playCorrect();
+  soundSystem.speak('Lion');
+}
+```
+
+## Speech synthesis
+
+```typescript
+soundSystem.speak(text: string): void
+```
+
+`speak` wraps `window.speechSynthesis` so it can be muted together with SFX.
+
+Kid-friendly settings applied automatically:
+
+- **Rate** `0.85` (slower than normal for young listeners)
+- **Pitch** `1.15` (slightly cheerful)
+
+If the browser provides voices, the system prefers the first `en` voice whose name includes "Google". Otherwise it falls back to the default voice. The method calls `speechSynthesis.cancel()` before speaking so rapid taps do not queue many overlapping utterances.
+
+## Background music
+
+```typescript
+soundSystem.startMusic(): void
+soundSystem.stopMusic(): void
+```
+
+`startMusic` lazily initializes a `SynthMusic` helper that plays a soft C-major pentatonic arpeggio on a triangle-wave oscillator:
+
+- Notes: `261.63`, `293.66`, `329.63`, `392.00`, `440.00`, `523.25`
+- Melody: `[0, 2, 3, 4, 3, 2, 4, 5]`
+- Step interval: 600 milliseconds
+- Volume: `0.012` (very quiet ambient)
+
+The loop respects the `musicMuted` flag and suspends itself when the audio context is not running (for example, before first user interaction).
+
+## Edge cases and safety
+
+- `AudioContext` is created lazily on the first sound trigger.
+- If the context is in the `suspended` state, `initCtx` resumes it.
+- All oscillator chains are wrapped in `try / catch` so Web Audio policy restrictions or missing APIs never crash the game.
+- SSR safety: `localStorage` and `window` reads happen only inside `typeof window !== 'undefined'` checks.
+
+## Testing
+
+Unit tests in `src/utils/sound.test.ts` cover:
+
+1. Reading and writing `sfxMuted` to `localStorage`.
+2. Reading and writing `musicMuted` to `localStorage`.
+3. Calling `speechSynthesis.speak` when `speak` is invoked.
+
+Run the tests with:
+
+```bash
+npm run test -- src/utils/sound.test.ts
+```

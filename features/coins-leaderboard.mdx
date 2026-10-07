@@ -1,0 +1,80 @@
+---
+title: "Coins & Leaderboard"
+description: "How Wild Guess & Match manages coin earning and spending, server-side validation, and the daily leaderboard that resets at UTC midnight."
+sidebarTitle: "Coins & Leaderboard"
+---
+
+Coins are the primary reward and spending currency in Wild Guess & Match. They are earned by playing the Guess Game and Match Game, then spent to unlock the Drawing Studio. The daily leaderboard ranks players by total score and resets every UTC midnight.
+
+## Earning Coins
+
+Coins are earned in two activities:
+
+| Activity | Base Reward | Scaling |
+| --- | --- | --- |
+| Guess Game | 10 coins | 12, 15, or 20 coins based on streak (see [Guess Game](/features/guess-game)) |
+| Match Game | 5 coins per match | Up to 40 coins per full round (see [Match Game](/features/match-game)) |
+
+When a child earns coins, `App.tsx` calls `handleEarnCoins(amount)`, which optimistically updates the local React state, then syncs to the server via `POST /api/score`.
+
+## Server Validation
+
+The `/api/score` Netlify Function validates every coin submission to prevent cheating:
+
+```ts
+if (mode === 'guess') {
+  validatedCoins = Math.min(20, Math.max(0, coinsEarned));
+} else if (mode === 'match') {
+  validatedCoins = Math.min(40, Math.max(0, coinsEarned));
+}
+```
+
+Guess Game earnings are clamped to a maximum of 20 and a minimum of 0. Match Game earnings are clamped to a maximum of 40 (8 pairs at 5 coins each) and a minimum of 0. The server then increments the player's coin balance in the `players` collection and stores the validated score record in the `scores` collection with the current UTC date string.
+
+On success, the server returns the new coin balance:
+
+```json
+{
+  "success": true,
+  "coinsEarned": 15,
+  "newCoinBalance": 143
+}
+```
+
+`App.tsx` uses this returned value to correct the local balance in case of a mismatch.
+
+## Spending Coins
+
+The only current unlock is the Drawing Studio, which costs 50 coins. When the child unlocks it, `App.tsx` deducts 50 coins locally and sends a `POST /api/player` request with the updated `coins` and `studioUnlocked: true`. The server clamps `coins` to a minimum of 0.
+
+```ts
+if (typeof coins === 'number') {
+  updateDoc.coins = Math.max(0, coins);
+}
+```
+
+## Leaderboard
+
+The leaderboard component fetches data from `GET /api/leaderboard/daily?playerId={playerId}`. It displays the top 10 players ranked by total `score` for the current UTC day.
+
+### Daily Reset Timer
+
+A countdown timer in the header shows the remaining time until the next UTC midnight. It updates every minute.
+
+```ts
+const utcMidnight = new Date(
+  Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + 1, 0, 0, 0, 0)
+);
+const diffMs = utcMidnight.getTime() - now.getTime();
+```
+
+### Rank Display
+
+- **Top 3 ranks** are highlighted with gold, silver, and bronze background colors.
+- **Current player**: If the active player is in the top 10, their row is highlighted with an orange border and a "You" label. If the player is outside the top 10, a separate "Your Rank" section appears below the list, showing their position, nickname, avatar, and score.
+
+Each row displays a rank badge, a cute animal avatar derived from a hash of the nickname, the player's name, and their score in points. If no scores have been submitted for the day, the leaderboard shows a friendly empty state.
+
+## Loading and Error States
+
+While scores are loading, the leaderboard shows a spinning loader with a playful label. If the request fails, an error banner appears with a "Try Again" button that re-fetches the data.

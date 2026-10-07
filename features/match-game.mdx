@@ -1,0 +1,65 @@
+---
+title: "Match Game"
+description: "How the Match Game in Wild Guess & Match works: configurable difficulty, four matching categories, card flip animations, a countdown timer, and 5 coins per match."
+sidebarTitle: "Match Game"
+---
+
+The Match Game is a memory-matching activity where children pair an animal card with its corresponding target card. It supports three difficulty levels and four matching categories.
+
+## Difficulty Levels
+
+`MatchGame.tsx` adjusts the number of pairs based on the selected difficulty:
+
+| Difficulty | Pairs | Cards | Grid Layout |
+| --- | --- | --- | --- |
+| Easy | 3 | 6 | `grid-cols-3` |
+| Medium | 6 | 12 | `grid-cols-3 sm:grid-cols-4` |
+| Hard | 8 | 16 | `grid-cols-4` |
+
+Animals are selected randomly from the `ANIMALS` array using the Fisher-Yates `shuffle` utility.
+
+## Matching Categories
+
+The child selects what each target card displays. The four `PairCategory` options are:
+
+| Category | Target Card Content | Example |
+| --- | --- | --- |
+| `name` | Display name text | "Lion" |
+| `food` | Food SVG image | Meat |
+| `habitat` | Habitat SVG image | Savanna |
+| `object` | Object SVG image | Crown |
+
+Name cards use `contentType: 'text'` while the other three use `contentType: 'image'`. Each animal card is paired with its matching target via the shared `matchId` property.
+
+## Game Mechanics
+
+1. The child clicks a card. It flips over with a framer-motion `rotateY` spring animation.
+2. A second card is clicked. If both cards share the same `matchId`, a match is found.
+3. After a 600ms delay, matched cards are locked in the flipped state, `soundSystem.playMatch()` plays, and 5 coins are awarded via `onEarnCoins(5)`.
+4. If the cards do not match, they flip back after 1200ms and `soundSystem.playFlip()` plays.
+
+Only two cards may be selected at once. The `isBusy` flag blocks further clicks while the match is resolving.
+
+## Timer and Victory
+
+A timer starts when the game begins and counts seconds elapsed. When all pairs are matched:
+
+- `stopTimer()` halts the countdown.
+- `soundSystem.playVictory()` triggers.
+- `canvas-confetti` explodes.
+- A summary screen shows time taken, matches found, and total coins won.
+
+```ts
+// Victory confetti settings
+confetti({
+  particleCount: 100,
+  spread: 80,
+  origin: { y: 0.6 },
+});
+```
+
+Children can then return to the setup screen or start a new game with the same settings.
+
+## Server Validation
+
+The Match Game awards 5 coins per match. The server-side `/api/score` endpoint validates Match Game earnings by clamping the submitted `coinsEarned` to a maximum of 40 (8 pairs at 5 coins each) and a minimum of 0. This prevents clients from inflating their balance.

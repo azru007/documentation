@@ -1,0 +1,177 @@
+---
+title: "Testing and CI: Unit, Serverless, and E2E Coverage"
+description: "How Wild Guess & Match is tested with Vitest, Playwright, and GitHub Actions. Covers unit tests for components and utilities, Netlify function mocking, and end-to-end smoke tests that run against a local dev server."
+sidebarTitle: "Testing & CI"
+---
+
+Wild Guess & Match uses three test layers: Vitest for unit and serverless tests, Playwright for end-to-end browser tests, and GitHub Actions CI that runs both on every push and pull request. This page explains the setup files, test commands, and the CI pipeline.
+
+## Unit tests with Vitest
+
+Unit tests live next to the files they cover and run inside `jsdom`.
+
+### Configuration
+
+`vitest.config.ts`:e `200`
+
+```typescript
+import { defineConfig, defaultExclude } from 'vitest/config';
+import react from '@vitejs/plugin-react';
+import tailwindcss from '@tailwindcss/vite';
+
+export default defineConfig({
+  plugins: [react(), tailwindcss()],
+  test: {
+    globals: true,
+    environment: 'jsdom',
+    setupFiles: './src/setupTests.ts',
+    exclude: [...defaultExclude, 'e2e/**'],
+  },
+});
+```
+
+- `globals: true` allows `describe`, `it`, and `expect` without imports.
+- `setupFiles` points to `src/setupTests.ts`, which only imports `@testing-library/jest-dom` for DOM matchers.
+- `exclude` keeps the Playwright `e2e` directory out of the unit run.
+
+### Example unit tests
+
+**Animal data validation** (`src/data/animals.test.ts`)
+
+Enforces that every animal has a valid `id`, SVG `imageUrl`, truthy `audioUrl`, `category`, and six properly paired `matchObjects` SVGs and names. It also requires the array to contain at least 8 animals.
+
+**SoundSystem state** (`src/utils/sound.test.ts`)
+
+- Toggles `sfxMuted` and persists it to `localStorage`.
+- Toggles `musicMuted` and persists it to `localStorage`.
+- Mocks `speechSynthesis` and `SpeechSynthesisUtterance` to verify `speak` triggers the browser API.
+
+**Component tests**
+
+Components such as `GuessGame`, `MatchGame`, `DrawingStudio`, `Leaderboard`, `ProfileSetup`, and `Layout` each have `.test.tsx` files using React Testing Library and `user-event`. They test rendering, tab navigation, locked screens, and form interactions.
+
+Run only unit tests:
+
+```bash
+npm run test
+```
+
+Run in watch mode during development:
+
+```bash
+npm run test:watch
+```
+
+Run a single test file:
+
+```bash
+npm run test -- src/utils/sound.test.ts
+```
+
+## Serverless function tests
+
+Netlify functions are tested with Vitest too. The test suite lives in `netlify/tests/player.test.ts`.
+
+The test mocks `connectToDatabase` from `netlify/functions/utils/mongodb.ts` with `vi.mock` so no real MongoDB connection is needed. It validates:
+
+- `GET` without `playerId` returns `400`.
+- `GET` for a missing player returns `404`.
+- `GET` for a valid player returns `200` with the profile.
+
+Run serverless tests together with unit tests (they are not excluded by `vitest.config.ts`):
+
+```bash
+npm run test -- netlify/tests/player.test.ts
+```
+
+## End-to-end tests with Playwright
+
+Playwright tests live under `e2e/` and spin up a real browser plus the Vite dev server.
+
+### Configuration
+
+`playwright.config.ts`:
+
+```typescript
+import { defineConfig, devices } from '@playwright/test';
+
+export default defineConfig({
+  testDir: './e2e',
+  fullyParallel: true,
+  forbidOnly: !!process.env.CI,
+  retries: process.env.CI ? 2 : 0,
+  workers: process.env.CI ? 1 : undefined,
+  reporter: 'line',
+  use: {
+    baseURL: 'http://localhost:5173',
+    trace: 'on-first-retry',
+    viewport: { width: 1280, height: 720 },
+  },
+  projects: [
+    {
+      name: 'chromium',
+      use: { ...devices['Desktop Chrome'] },
+    },
+  ],
+  webServer: {
+    command: 'npm run dev',
+    url: 'http://localhost:5173',
+    reuseExistingServer: !process.env.CI,
+  },
+});
+```
+
+- `baseURL` targets the local dev server.
+- In CI, retries are set to `2`, workers to `1`, and `reuseExistingServer` is `false`.
+- Only Chromium is tested to keep CI fast.
+
+### Test files
+
+**Smoke test** (`e2e/smoke.spec.ts`)
+
+Opens the root page and asserts the parent gate shows `ASK AN ADULT`.
+
+**Gameplay test** (`e2e/gameplay.spec.ts`)
+
+A full user journey that:
+
+1. Mocks `api/player`, `api/score`, and `api/leaderboard/daily` with Playwright route interception.
+2. Solves the math parent gate.
+3. Completes profile onboarding with a nickname.
+4. Verifies the Guess Game streak counter.
+5. Navigates to the Leaderboard and Studio tabs.
+
+Run E2E tests:
+
+```bash
+npm run test:e2e
+```
+
+## Continuous integration
+
+`.github/workflows/ci.yml` runs on every push or pull request against `main`.
+
+Steps:
+
+1. **Checkout Code**
+2. **Set up Node.js 22** with `npm` caching
+3. **Install Dependencies** via `npm ci`
+4. **Typecheck** with `npx tsc --noEmit`
+5. **Lint** with `npm run lint`
+6. **Unit Tests** with `npm run test`
+7. **Build Application** with `npm run build`
+8. **Install Playwright Browsers** (`chromium --with-deps`)
+9. **E2E Smoke Tests** with `npm run test:e2e`
+
+The pipeline fails fast if any step breaks, so type errors, linter issues, or test regressions block merges.
+
+## Test scripts quick reference
+
+| Command | What it does |
+| --- | --- |
+| `npm run test` | Vitest unit and serverless tests once |
+| `npm run test:watch` | Vitest in watch mode |
+| `npm run test:e2e` | Playwright E2E tests (starts dev server automatically) |
+| `npx playwright test --headed` | Run E2E in headed Chromium for debugging |
+
+For more on the audio layer under test, see [Sound System](/development/sound-system). For the data contracts validated by tests, see [Animal Data](/development/animal-data).
